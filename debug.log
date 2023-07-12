@@ -1,0 +1,16 @@
+[00:00:00.000] (4458) TRACE  [0x9a31aa0] ClassFactory::query_interface(00000001-0000-0000-C000-000000000046)
+[00:00:00.000] (4458) TRACE  [0x9a31aa0] ClassFactory::query_interface(00000001-0000-0000-C000-000000000046) -> IClassFactory (Automation) [0x9a31aa8]
+[00:00:00.001] (4458) TRACE  [0x9a31aa0, through 0x9a31aa8] Serving intercom::classfactory::ClassFactory<newobj::MyNewUserWizard>::create_instance
+[00:00:00.001] (4458) TRACE  [0x9a32be0] MyNewUserWizard::query_interface(6088EAE2-E7BF-11D2-82AF-00C04F68928B)
+[00:00:00.001] (4458) TRACE  [0x9a32be0] MyNewUserWizard::query_interface(6088EAE2-E7BF-11D2-82AF-00C04F68928B) -> IDsAdminNewObjExt (Automation) [0x9a32be8]
+[00:00:00.002] (4458) TRACE  [0x9a31aa0, through 0x9a31aa8] Serving intercom::classfactory::ClassFactory<newobj::MyNewUserWizard>::create_instance, OK
+[00:00:00.002] (4458) TRACE  [0x9a32be0, through 0x9a32be8] Serving newobj::MyNewUserWizard::add_ref
+[00:00:00.002] (4458) TRACE  [0x9a32be0, through 0x9a32be8] Serving newobj::MyNewUserWizard::release
+[00:00:00.002] (4458) TRACE  [0x9a31aa0, through 0x9a31aa8] Serving intercom::classfactory::ClassFactory<newobj::MyNewUserWizard>::release
+[00:00:00.002] (4458) TRACE  [0x9a32be0, through 0x9a32be8] Serving newobj::MyNewUserWizard::query_interface
+[00:00:00.003] (4458) TRACE  [0x9a32be0] MyNewUserWizard::query_interface(6088EAE2-E7BF-11D2-82AF-00C04F68928B)
+[00:00:00.003] (4458) TRACE  [0x9a32be0] MyNewUserWizard::query_interface(6088EAE2-E7BF-11D2-82AF-00C04F68928B) -> IDsAdminNewObjExt (Automation) [0x9a32be8]
+[00:00:00.003] (4458) TRACE  [0x9a32be0, through 0x9a32be8] Serving newobj::MyNewUserWizard::release
+[00:00:00.004] (4458) TRACE  [0x9a32be0, through 0x9a32be8] Serving newobj::MyNewUserWizard::initialize
+[00:00:00.004] (4458) TRACE  [0x9a32be0, through 0x9a32be8] Serving newobj::MyNewUserWizard::initialize, ERROR
+[00:00:00.005] (4458) TRACE  [0x9a32be0, through 0x9a32be8] Serving newobj::MyNewUserWizard::release
