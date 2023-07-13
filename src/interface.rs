@@ -1,3 +1,8 @@
+use core::fmt;
+
+use std::ffi::OsString;
+use std::os::windows::ffi::OsStringExt;
+
 use intercom::{IUnknown, prelude::*, BString};
 use windows::{Win32::{UI::Controls::{LPFNSVADDPROPSHEETPAGE, HPROPSHEETPAGE}, Foundation::{LPARAM, BOOL}}, core::PCWSTR};
 
@@ -15,6 +20,25 @@ pub struct ComLPARAM(pub LPARAM);
 #[allow(non_camel_case_types)]
 #[repr(transparent)]
 pub struct ComPCWSTR(pub PCWSTR);
+
+#[derive(intercom::ExternType, intercom::ForeignType, intercom::ExternInput)]
+#[allow(non_camel_case_types)]
+#[repr(transparent)]
+pub struct LPCWSTR(pub *const u16);
+
+impl std::fmt::Display for LPCWSTR {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        unsafe {
+            let mut len = 0;
+            while *self.0.offset(len) != 0 {
+                len += 1;
+            }
+            let slice = std::slice::from_raw_parts(self.0, len as usize);
+            let os_string = OsString::from_wide(slice);
+            write!(f, "{}", os_string.to_string_lossy())
+        }
+    }
+}
 
 #[com_interface(com_iid = "6088EAE2-E7BF-11D2-82AF-00C04F68928B")]
 pub trait IDsAdminNewObjExt: IUnknown {
@@ -67,7 +91,7 @@ pub trait IDsAdminNewObjExt: IUnknown {
         &self,
         iadscontainer: &ComItf<dyn IADsContainer>,
         iads: Option<&ComItf<dyn IADs>>,
-        class_name: ComLPARAM,
+        class_name: LPCWSTR,
         adminnewobj: &ComItf<dyn IDsAdminNewObj>,
         disp_info: usize
     ) -> ComResult<()>;
@@ -81,7 +105,7 @@ pub trait IDsAdminNewObjExt: IUnknown {
     /// extension calls to add a page to the wizard. This function takes the
     /// following format.
     /// 
-    /// ```
+    /// ```cpp
     /// BOOL fnAddPage(HPROPSHEETPAGE hPage, LPARAM lParam);
     /// ```
     /// 

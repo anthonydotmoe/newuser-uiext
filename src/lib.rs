@@ -1,7 +1,10 @@
-use intercom::{ IUnknown, prelude::*, BString };
-
 mod interface;
 use interface::*;
+
+mod resource_consts;
+
+use intercom::{ IUnknown, prelude::*, BString };
+
 use windows::{Win32::{UI::Controls::{PROPSHEETPAGEW, PROPSHEETPAGEW_0, PROPSHEETPAGEW_1, PROPSHEETPAGEW_2, PSP_DEFAULT, CreatePropertySheetPageW}, Foundation::{HMODULE, LPARAM, HANDLE} }, core::PCWSTR, w};
 use windows::Win32::System::LibraryLoader::{GetModuleHandleExW, GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS, GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT};
 
@@ -24,88 +27,113 @@ fn on_load() {
 #[com_class(clsid = "1af9e4e5-d2fc-41e6-9a7e-3fbdb38a34b4", IDsAdminNewObjExt)]
 #[derive(Default)]
 struct MyNewUserWizard {
+    
+    obj_container: std::cell::RefCell<Option<ComRc<dyn IADsContainer>>>,    
+    copy_source: std::cell::RefCell<Option<ComRc<dyn IADs>>>,
+    
 
 }
 
-/// # Implementing IDsAdminNewObjExt
-/// 
-/// 1. Initialize()
-///
-/// Initialize supplies the extension with information about the container
-/// about the container the object is being created in, the class name of
-/// the new object and information about the wizard itself.
-///       
-/// 2. AddPages
-/// 
-/// After the extension is initialized, AddPages is called. The extensions adds
-/// the page or pages to the wizard during this method. Create wizard page by
-/// filling in `PROPSHEETPAGE` structure and passing it to the
-/// `CreatePropertySheetPage` function. The page is then added to the wizard by
-/// calling the callback function that is passed to AddPages in the addpagefn
-/// parameter.
-/// 
-/// 3. SetObject
-/// 
-/// Before the extension page is displayed, SetObject is called. This supplies
-/// the extension with an IADs interface pointer for the object being created.
-/// 
-/// While the wizard page is displayed, the page should handle and respond to
-/// any necessary wizard notification messages, such as `PSN_SETACTIVE` and
-/// `PSN_WIZNEXT`
-/// 
-/// 4. GetSummaryInfo
-/// 
-/// When the user completes all of the wizard pages, the wizard will display a
-/// "Finish" page that provides a summary of the data entered. The wizard
-/// obtains this data by calling the GetSummaryInfo method for each of the
-/// extensions. The GetSummaryInfo method provides a BSTR that contains the text
-/// data displayed in the "Finish" page. An object creation extension does not
-/// have to supply summary data. GetSummaryInfo should return E_NOTIMPL.
-/// 
-/// 5. WriteData
-/// 
-/// When the user clicks the finish button, the wizard calls each of the
-/// extension's WriteData methods with the DSA_NEWOBJ_CTX_PRECOMMIT context.
-/// When this occurs the extension should write the gathered data into the
-/// appropriate properties using the IADs::Put or IADs::PutEx method. The IADs
-/// interface is provided to the extension in the SetObject method. The
-/// extension should not commit the cached properties by calling IADs::SetInfo.
-/// When all the properties are written, the primary object creation extension
-/// commits the changes by calling IADs::SetInfo.
-///
-/// 6. OnError
-/// 
-/// If an error occurs, the extension will be notified of the error and during
-/// which operation it occured when the OnError method is called.
-/// 
-/// # Implementing a Primary Object Creation Wizard
-/// 
-/// The implementation of a primary object creation wizard is identical to a
-/// secondary object creation wizard, except that a primary object creation
-/// wizard must perform a few more steps.
-/// 
-/// 1. Prior to the first page being dismissed, the object creation wizard must
-/// create the temporary directory object. Call
-/// IDsAdminNewObjPrimarySite::CreateNew. The interface pointer is obtained by
-/// calling QueryInterface on the IDsAdminNewObj interface passed to Initialize.
-/// The CreateNew method creates a new temporary object and calls
-/// IDsAdminNewObjExt::SetObject for each extension.
+/**
+# Implementing IDsAdminNewObjExt
+
+1. Initialize()
+
+Initialize supplies the extension with information about the container
+about the container the object is being created in, the class name of
+the new object and information about the wizard itself.
+      
+2. AddPages
+
+After the extension is initialized, AddPages is called. The extensions adds
+the page or pages to the wizard during this method. Create wizard page by
+filling in `PROPSHEETPAGE` structure and passing it to the
+`CreatePropertySheetPage` function. The page is then added to the wizard by
+calling the callback function that is passed to AddPages in the addpagefn
+parameter.
+
+3. SetObject
+
+Before the extension page is displayed, SetObject is called. This supplies
+the extension with an IADs interface pointer for the object being created.
+
+While the wizard page is displayed, the page should handle and respond to
+any necessary wizard notification messages, such as `PSN_SETACTIVE` and
+`PSN_WIZNEXT`
+
+4. GetSummaryInfo
+
+When the user completes all of the wizard pages, the wizard will display a
+"Finish" page that provides a summary of the data entered. The wizard
+obtains this data by calling the GetSummaryInfo method for each of the
+extensions. The GetSummaryInfo method provides a BSTR that contains the text
+data displayed in the "Finish" page. An object creation extension does not
+have to supply summary data, GetSummaryInfo should return E_NOTIMPL if so.
+
+5. WriteData
+
+When the user clicks the finish button, the wizard calls each of the
+extension's WriteData methods with the DSA_NEWOBJ_CTX_PRECOMMIT context.
+When this occurs the extension should write the gathered data into the
+appropriate properties using the IADs::Put or IADs::PutEx method. The IADs
+interface is provided to the extension in the SetObject method. The
+extension should not commit the cached properties by calling IADs::SetInfo.
+When all the properties are written, the primary object creation extension
+commits the changes by calling IADs::SetInfo.
+
+6. OnError
+
+If an error occurs, the extension will be notified of the error and during
+which operation it occured when the OnError method is called.
+
+# Implementing a Primary Object Creation Wizard
+
+The implementation of a primary object creation wizard is identical to a
+secondary object creation wizard, except that a primary object creation
+wizard must perform a few more steps.
+
+1. Prior to the first page being dismissed, the object creation wizard must
+create the temporary directory object. Call
+IDsAdminNewObjPrimarySite::CreateNew. The interface pointer is obtained by
+calling QueryInterface on the IDsAdminNewObj interface passed to Initialize.
+The CreateNew method creates a new temporary object and calls
+IDsAdminNewObjExt::SetObject for each extension.
+*/
 
 impl IDsAdminNewObjExt for MyNewUserWizard {
     fn initialize(
         &self,
-        iadscontainer: &ComItf<dyn IADsContainer>,
-        iads: Option<&ComItf<dyn IADs>>,
-        class_name: ComLPARAM,
-        adminnewobj: &ComItf<dyn IDsAdminNewObj>,
+        obj_container: &ComItf<dyn IADsContainer>,
+        copy_source: Option<&ComItf<dyn IADs>>,
+        class_name: LPCWSTR,
+        _adminnewobj: &ComItf<dyn IDsAdminNewObj>, // Used for primary new object extensions
         disp_info: usize
     ) -> ComResult<()> {
-        log::info!("Initialize called. {:?}", class_name.0);
+        log::info!("Initialize called. objectClass: {}", class_name);
         
-        //iadscontainer.as_raw_iunknown().add_ref();
-        //iads.as_raw_iunknown().add_ref();
-        //adminnewobj.as_raw_iunknown().add_ref();
-        //log::info!("Got {:?}", (iadscontainer, iads, class_name.0, adminnewobj, disp_info));
+        match class_name.to_string().as_str() {
+            "user" => {
+                log::info!("We support this!")
+            }
+            _ => {
+                log::error!("This is not correct. Bail!");
+                return Err(ComError::E_INVALIDARG)
+            }
+        }
+
+        log::info!("Keeping copies of obj_container and copy_source");
+        
+        match copy_source {
+            Some(interface) => {
+                *self.copy_source.borrow_mut() = Some(interface.to_owned());
+            }
+            None => {
+                log::info!("No copy source");
+            }
+        }
+        
+        *self.obj_container.borrow_mut() = Some(obj_container.to_owned());
+
         Ok(())
     }
     
@@ -122,17 +150,17 @@ impl IDsAdminNewObjExt for MyNewUserWizard {
             dwSize: std::mem::size_of::<PROPSHEETPAGEW>() as u32,
             dwFlags: PSP_DEFAULT,
             hInstance: hinstance,
-            Anonymous1: PROPSHEETPAGEW_0 { pszTemplate: make_int_resource(1) },
-            Anonymous2: PROPSHEETPAGEW_1 { pszIcon: make_int_resource(101) },
-            pszTitle: w!("Title"),
+            Anonymous1: PROPSHEETPAGEW_0 { pszTemplate: make_int_resource(resource_consts::DIALOG_1) },
+            Anonymous2: PROPSHEETPAGEW_1 { pszIcon: PCWSTR::null() },
+            pszTitle: PCWSTR::null(),
             pfnDlgProc: None,
             lParam: LPARAM(0),
             pfnCallback: None,
             pcRefParent: std::ptr::null_mut(),
-            pszHeaderTitle: w!("HeaderTitle"),
-            pszHeaderSubTitle: w!("HeaderSubTitle"),
+            pszHeaderTitle: PCWSTR::null(),
+            pszHeaderSubTitle: PCWSTR::null(),
             hActCtx: HANDLE(0),
-            Anonymous3: PROPSHEETPAGEW_2 { pszbmHeader: make_int_resource(1001) },
+            Anonymous3: PROPSHEETPAGEW_2 { pszbmHeader: PCWSTR::null() },
         };
         
         log::debug!("Created page object: {:p}", &page1);
@@ -157,7 +185,7 @@ impl IDsAdminNewObjExt for MyNewUserWizard {
 
     fn set_object(&self,ad_obj: &ComItf<dyn IUnknown>) -> ComResult<()> {
         log::error!("SetObject called!");
-        todo!()
+        Ok(())
     }
 
     fn write_data(&self,) -> ComResult<()> {
