@@ -1,10 +1,10 @@
 use intercom::{IUnknown, prelude::*, BString};
-use windows::{Win32::{UI::Controls::LPFNSVADDPROPSHEETPAGE, Foundation::LPARAM}, core::PCWSTR};
+use windows::{Win32::{UI::Controls::{LPFNSVADDPROPSHEETPAGE, HPROPSHEETPAGE}, Foundation::{LPARAM, BOOL}}, core::PCWSTR};
 
 #[derive(intercom::ExternType, intercom::ForeignType, intercom::ExternInput)]
 #[allow(non_camel_case_types)]
 #[repr(transparent)]
-pub struct ComLPFNSVADDPROPSHEETPAGE(pub LPFNSVADDPROPSHEETPAGE);
+pub struct ComLPFNSVADDPROPSHEETPAGE(pub unsafe extern "stdcall" fn(param0: HPROPSHEETPAGE, param1: LPARAM) -> BOOL);
 
 #[derive(intercom::ExternType, intercom::ForeignType, intercom::ExternInput)]
 #[allow(non_camel_case_types)]
@@ -63,7 +63,14 @@ pub trait IDsAdminNewObjExt: IUnknown {
     /// from which the copy is made. If the new object is not being copied from
     /// another object, *iads* will be `NULL`. The copy operation if only
     /// supported for user objects.
-    fn initialize(&self, iadscontainer: &ComItf<dyn IADsContainer>, iads: &ComItf<dyn IADs>, class_name: ComPCWSTR, adminnewobj: &ComItf<dyn IDsAdminNewObj>, disp_info: usize) -> ComResult<()>;
+    fn initialize(
+        &self,
+        iadscontainer: &ComItf<dyn IADsContainer>,
+        iads: Option<&ComItf<dyn IADs>>,
+        class_name: ComLPARAM,
+        adminnewobj: &ComItf<dyn IDsAdminNewObj>,
+        disp_info: usize
+    ) -> ComResult<()>;
     
     /// Called to enable the object creation wizard extension to add the desired
     /// pages to the wizard.
@@ -99,7 +106,11 @@ pub trait IDsAdminNewObjExt: IUnknown {
     /// 
     /// This method is identical in format and operation to the
     /// `IShellPropSheetExt::AddPages` method.
-    fn add_pages(&self, addpagefn: *const ComLPFNSVADDPROPSHEETPAGE, param: ComLPARAM) -> ComResult<()>;
+    fn add_pages(
+        &self,
+        addpagefn: ComLPFNSVADDPROPSHEETPAGE,
+        param: ComLPARAM
+    ) -> ComResult<()>;
     
     /// Provides the object creation extension with a pointer to the created
     /// directory object

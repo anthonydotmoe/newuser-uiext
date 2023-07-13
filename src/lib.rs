@@ -92,19 +92,31 @@ struct MyNewUserWizard {
 /// IDsAdminNewObjExt::SetObject for each extension.
 
 impl IDsAdminNewObjExt for MyNewUserWizard {
-    fn initialize(&self, iadscontainer: &ComItf<dyn IADsContainer>, iads: &ComItf<dyn IADs>, class_name: ComPCWSTR, adminnewobj: &ComItf<dyn IDsAdminNewObj>, disp_info: usize) -> ComResult<()> {
-        log::info!("Initialize called.");
+    fn initialize(
+        &self,
+        iadscontainer: &ComItf<dyn IADsContainer>,
+        iads: Option<&ComItf<dyn IADs>>,
+        class_name: ComLPARAM,
+        adminnewobj: &ComItf<dyn IDsAdminNewObj>,
+        disp_info: usize
+    ) -> ComResult<()> {
+        log::info!("Initialize called. {:?}", class_name.0);
         
-        iadscontainer.as_raw_iunknown().add_ref();
-        iads.as_raw_iunknown().add_ref();
-        adminnewobj.as_raw_iunknown().add_ref();
+        //iadscontainer.as_raw_iunknown().add_ref();
+        //iads.as_raw_iunknown().add_ref();
+        //adminnewobj.as_raw_iunknown().add_ref();
         //log::info!("Got {:?}", (iadscontainer, iads, class_name.0, adminnewobj, disp_info));
         Ok(())
     }
     
-    fn add_pages(&self,addpagefn: *const ComLPFNSVADDPROPSHEETPAGE,param:ComLPARAM) -> ComResult<()> {
+    fn add_pages(&self,
+        addpagefn: ComLPFNSVADDPROPSHEETPAGE,
+        param: ComLPARAM
+    ) -> ComResult<()> {
+        log::debug!("add_pages called");
 
         let hinstance = get_dll_hinstance();
+        log::debug!("got hInstance: {:?}", &hinstance);
         
         let mut page1: PROPSHEETPAGEW = PROPSHEETPAGEW {
             dwSize: std::mem::size_of::<PROPSHEETPAGEW>() as u32,
@@ -123,24 +135,19 @@ impl IDsAdminNewObjExt for MyNewUserWizard {
             Anonymous3: PROPSHEETPAGEW_2 { pszbmHeader: make_int_resource(1001) },
         };
         
+        log::debug!("Created page object: {:p}", &page1);
+        
         let page1_h = unsafe { CreatePropertySheetPageW(&mut page1) };
         
+        log::debug!("Got HPROPSHEETPAGE: {:?}", &page1_h);
+        
         unsafe {
-            match (*addpagefn).0 {
-                Some(function) => {
-                    match function(page1_h, param.0).as_bool() {
-                        true => {
-                            log::info!("addpagefn returned true");
-                        }
-                        false => {
-                            log::warn!("addpagefn returned false");
-                        }
-
-                    }
+            match addpagefn.0(page1_h, param.0).as_bool() {
+                true => {
+                    log::info!("addpagefn returned true");
                 }
-                _ => {
-                    log::error!("How could this happen.");
-                    panic!()
+                false => {
+                    log::warn!("addpagefn returned false");
                 }
             }
         }
