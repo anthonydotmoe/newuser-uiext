@@ -1,0 +1,1 @@
+![Dialog insertion demo](/demo.png)
