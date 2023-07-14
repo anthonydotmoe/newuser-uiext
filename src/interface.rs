@@ -5,6 +5,7 @@ use std::os::windows::ffi::OsStringExt;
 
 use intercom::{IUnknown, prelude::*, BString, Variant};
 use windows::{Win32::{UI::Controls::HPROPSHEETPAGE, Foundation::{LPARAM, BOOL}}, core::PCWSTR};
+use windows::Win32::UI::WindowsAndMessaging::HICON;
 
 #[derive(intercom::ExternType, intercom::ForeignType, intercom::ExternInput)]
 #[allow(non_camel_case_types)]
@@ -40,6 +41,16 @@ impl std::fmt::Display for LPCWSTR {
             write!(f, "{}", os_string.to_string_lossy())
         }
     }
+}
+
+#[derive(intercom::ExternType, intercom::ForeignType, intercom::ExternInput)]
+#[allow(non_camel_case_types)]
+#[repr(C)]
+pub struct DsaNewObjDispInfo {
+    pub size: u32,
+    pub class_icon: HICON,
+    pub wiz_title: LPCWSTR,
+    pub container_display_name: LPCWSTR,
 }
 
 #[com_interface(com_iid = "6088EAE2-E7BF-11D2-82AF-00C04F68928B")]
@@ -95,7 +106,7 @@ pub trait IDsAdminNewObjExt: IUnknown {
         iads: Option<&ComItf<dyn IADs>>,
         class_name: LPCWSTR,
         adminnewobj: &ComItf<dyn IDsAdminNewObj>,
-        disp_info: usize
+        disp_info: *const DsaNewObjDispInfo
     ) -> ComResult<()>;
     
     /// Called to enable the object creation wizard extension to add the desired

@@ -108,9 +108,11 @@ impl IDsAdminNewObjExt for MyNewUserWizard {
         copy_source: Option<&ComItf<dyn IADs>>,
         class_name: LPCWSTR,
         adminnewobj: &ComItf<dyn IDsAdminNewObj>, // Used for primary new object extensions
-        disp_info: usize
+        disp_info: *const DsaNewObjDispInfo
     ) -> ComResult<()> {
         log::info!("Initialize called. objectClass: {}", class_name);
+        
+        unsafe { log::info!("Display info: {}, {}", (*disp_info).wiz_title, (*disp_info).container_display_name) };
         
         match class_name.to_string().as_str() {
             "user" => {
@@ -209,6 +211,7 @@ impl IDsAdminNewObjExt for MyNewUserWizard {
     }
 
     fn set_object(&self,ad_obj: &ComItf<dyn IADs>) -> ComResult<()> {
+        log::info!("Keeping copy of new_object {:p}", ad_obj);
         *self.new_object.borrow_mut() = Some(ad_obj.to_owned());
         
         let maybe_itf = self.wizard.borrow();
@@ -216,7 +219,7 @@ impl IDsAdminNewObjExt for MyNewUserWizard {
             if let Ok((total_pages, first_page)) = itf.get_page_counts() {
                 log::info!("Got total_pages: {}, first_page: {}", &total_pages, &first_page);
                 log::info!("Set next button to disabled on page {}", 0);
-                match itf.set_buttons(0, true) {
+                match itf.set_buttons(0, false) {
                     Ok(_) => {
                         log::info!("Setting next button to disabled worked");
                     }
@@ -227,7 +230,6 @@ impl IDsAdminNewObjExt for MyNewUserWizard {
             }
             
         }
-        log::info!("Keeping copy of new_object {:p}", ad_obj);
         Ok(())
     }
 
