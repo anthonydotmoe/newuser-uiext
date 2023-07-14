@@ -271,7 +271,7 @@ pub trait IADs: IDispatch {
 #[com_interface(com_iid = "F2573587-E6FC-11D2-82AF-00C04F68928B")]
 pub trait IDsAdminNewObj: IUnknown {
     fn set_buttons(&self, curr_index: u32, valid: bool) -> ComResult<()>;
-    fn get_page_counts(&self) -> ComResult<(i32, i32)>;
+    fn get_page_counts(&self) -> ComResult<(u32, u32)>;
 }
 
 #[com_interface(com_iid = "00020400-0000-0000-C000-000000000046")]

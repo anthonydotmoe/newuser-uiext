@@ -3,9 +3,9 @@ use interface::*;
 
 mod resource_consts;
 
-use intercom::{ IUnknown, prelude::*, BString };
+use intercom::{ prelude::*, BString, Variant };
 
-use windows::{Win32::{UI::Controls::{PROPSHEETPAGEW, PROPSHEETPAGEW_0, PROPSHEETPAGEW_1, PROPSHEETPAGEW_2, PSP_DEFAULT, CreatePropertySheetPageW}, Foundation::{HMODULE, LPARAM, HANDLE} }, core::PCWSTR, w};
+use windows::{Win32::{UI::Controls::{PROPSHEETPAGEW, PROPSHEETPAGEW_0, PROPSHEETPAGEW_1, PROPSHEETPAGEW_2, PSP_DEFAULT, CreatePropertySheetPageW}, Foundation::{HMODULE, LPARAM, HANDLE} }, core::PCWSTR};
 use windows::Win32::System::LibraryLoader::{GetModuleHandleExW, GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS, GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT};
 
 com_library!(
@@ -31,6 +31,7 @@ struct MyNewUserWizard {
     obj_container: std::cell::RefCell<Option<ComRc<dyn IADsContainer>>>,    
     copy_source: std::cell::RefCell<Option<ComRc<dyn IADs>>>,
     new_object: std::cell::RefCell<Option<ComRc<dyn IADs>>>,
+    wizard: std::cell::RefCell<Option<ComRc<dyn IDsAdminNewObj>>>,
 
 }
 
@@ -106,7 +107,7 @@ impl IDsAdminNewObjExt for MyNewUserWizard {
         obj_container: &ComItf<dyn IADsContainer>,
         copy_source: Option<&ComItf<dyn IADs>>,
         class_name: LPCWSTR,
-        _adminnewobj: &ComItf<dyn IDsAdminNewObj>, // Used for primary new object extensions
+        adminnewobj: &ComItf<dyn IDsAdminNewObj>, // Used for primary new object extensions
         disp_info: usize
     ) -> ComResult<()> {
         log::info!("Initialize called. objectClass: {}", class_name);
@@ -133,6 +134,26 @@ impl IDsAdminNewObjExt for MyNewUserWizard {
         }
         
         *self.obj_container.borrow_mut() = Some(obj_container.to_owned());
+        *self.wizard.borrow_mut() = Some(adminnewobj.to_owned());
+        
+        let maybe_itf = self.copy_source.borrow();
+        if let Some(ref itf) = *maybe_itf {
+            match itf.get("mail".into()) {
+                Ok(name) => {
+                    match name {
+                        Variant::String(s) => {
+                            log::info!("The name of clone is {}", String::try_from(s).unwrap());
+                        }
+                        _ => {
+                            log::error!("Didn't expect that type. {:?}", name)
+                        }
+                    }
+                }
+                Err(e) => {
+                    log::error!("Got an error trying to use the copy's IADs::Get(\"distinguishedName\"): {}", e.to_string());
+                }
+            }
+        }
 
         Ok(())
     }
@@ -146,36 +167,40 @@ impl IDsAdminNewObjExt for MyNewUserWizard {
         let hinstance = get_dll_hinstance();
         log::debug!("got hInstance: {:?}", &hinstance);
         
-        let mut page1: PROPSHEETPAGEW = PROPSHEETPAGEW {
-            dwSize: std::mem::size_of::<PROPSHEETPAGEW>() as u32,
-            dwFlags: PSP_DEFAULT,
-            hInstance: hinstance,
-            Anonymous1: PROPSHEETPAGEW_0 { pszTemplate: make_int_resource(resource_consts::DIALOG_2) },
-            Anonymous2: PROPSHEETPAGEW_1 { pszIcon: PCWSTR::null() },
-            pszTitle: PCWSTR::null(),
-            pfnDlgProc: None,
-            lParam: LPARAM(0),
-            pfnCallback: None,
-            pcRefParent: std::ptr::null_mut(),
-            pszHeaderTitle: PCWSTR::null(),
-            pszHeaderSubTitle: PCWSTR::null(),
-            hActCtx: HANDLE(0),
-            Anonymous3: PROPSHEETPAGEW_2 { pszbmHeader: PCWSTR::null() },
-        };
-        
-        log::debug!("Created page object: {:p}", &page1);
-        
-        let page1_h = unsafe { CreatePropertySheetPageW(&mut page1 as _) };
-        
-        log::debug!("Got HPROPSHEETPAGE: {:?}", &page1_h);
-        
-        unsafe {
-            match addpagefn.0(page1_h, param.0).as_bool() {
-                true => {
-                    log::info!("addpagefn returned true");
-                }
-                false => {
-                    log::warn!("addpagefn returned false");
+        let pages = vec![resource_consts::DIALOG_1, resource_consts::DIALOG_2];
+        for page in pages.iter() {
+                
+            let mut propsheet: PROPSHEETPAGEW = PROPSHEETPAGEW {
+                dwSize: std::mem::size_of::<PROPSHEETPAGEW>() as u32,
+                dwFlags: PSP_DEFAULT,
+                hInstance: hinstance,
+                Anonymous1: PROPSHEETPAGEW_0 { pszTemplate: make_int_resource(*page) },
+                Anonymous2: PROPSHEETPAGEW_1 { pszIcon: PCWSTR::null() },
+                pszTitle: PCWSTR::null(),
+                pfnDlgProc: None,
+                lParam: LPARAM(0),
+                pfnCallback: None,
+                pcRefParent: std::ptr::null_mut(),
+                pszHeaderTitle: PCWSTR::null(),
+                pszHeaderSubTitle: PCWSTR::null(),
+                hActCtx: HANDLE(0),
+                Anonymous3: PROPSHEETPAGEW_2 { pszbmHeader: PCWSTR::null() },
+            };
+            
+            log::debug!("Created page object: {:p}", &propsheet);
+            
+            let page1_h = unsafe { CreatePropertySheetPageW(&mut propsheet as _) };
+            
+            log::debug!("Got HPROPSHEETPAGE: {:?}", &page1_h);
+            
+            unsafe {
+                match addpagefn.0(page1_h, param.0).as_bool() {
+                    true => {
+                        log::info!("addpagefn returned true");
+                    }
+                    false => {
+                        log::warn!("addpagefn returned false");
+                    }
                 }
             }
         }
@@ -185,6 +210,23 @@ impl IDsAdminNewObjExt for MyNewUserWizard {
 
     fn set_object(&self,ad_obj: &ComItf<dyn IADs>) -> ComResult<()> {
         *self.new_object.borrow_mut() = Some(ad_obj.to_owned());
+        
+        let maybe_itf = self.wizard.borrow();
+        if let Some(ref itf) = *maybe_itf {
+            if let Ok((total_pages, first_page)) = itf.get_page_counts() {
+                log::info!("Got total_pages: {}, first_page: {}", &total_pages, &first_page);
+                log::info!("Set next button to disabled on page {}", 0);
+                match itf.set_buttons(0, true) {
+                    Ok(_) => {
+                        log::info!("Setting next button to disabled worked");
+                    }
+                    Err(e) => {
+                        log::error!("Setting next button to disabled didn't work: {}", e.to_string())
+                    }
+                }
+            }
+            
+        }
         log::info!("Keeping copy of new_object {:p}", ad_obj);
         Ok(())
     }
