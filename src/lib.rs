@@ -3,10 +3,11 @@ use interface::*;
 
 mod resource_consts;
 
-use intercom::{ prelude::*, BString, Variant };
+use intercom::{ prelude::*, BString, Variant, raw::E_INVALIDARG };
 
-use windows::{Win32::{UI::Controls::{PROPSHEETPAGEW, PROPSHEETPAGEW_0, PROPSHEETPAGEW_1, PROPSHEETPAGEW_2, PSP_DEFAULT, CreatePropertySheetPageW}, Foundation::{HMODULE, LPARAM, HANDLE} }, core::PCWSTR};
+use windows::{Win32::{UI::Controls::{PROPSHEETPAGEW, PROPSHEETPAGEW_0, PROPSHEETPAGEW_1, PROPSHEETPAGEW_2, PSP_DEFAULT, CreatePropertySheetPageW, PSP_USEHICON}, Foundation::{HMODULE, LPARAM, HANDLE} }, core::PCWSTR};
 use windows::Win32::System::LibraryLoader::{GetModuleHandleExW, GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS, GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT};
+use windows::Win32::UI::WindowsAndMessaging::HICON;
 
 com_library!(
     on_load = on_load,
@@ -32,6 +33,7 @@ struct MyNewUserWizard {
     copy_source: std::cell::RefCell<Option<ComRc<dyn IADs>>>,
     new_object: std::cell::RefCell<Option<ComRc<dyn IADs>>>,
     wizard: std::cell::RefCell<Option<ComRc<dyn IDsAdminNewObj>>>,
+    wiz_icon: HICON,
 
 }
 
@@ -103,7 +105,7 @@ IDsAdminNewObjExt::SetObject for each extension.
 
 impl IDsAdminNewObjExt for MyNewUserWizard {
     fn initialize(
-        &self,
+        &mut self,
         obj_container: &ComItf<dyn IADsContainer>,
         copy_source: Option<&ComItf<dyn IADs>>,
         class_name: LPCWSTR,
@@ -113,6 +115,7 @@ impl IDsAdminNewObjExt for MyNewUserWizard {
         log::info!("Initialize called. objectClass: {}", class_name);
         
         unsafe { log::info!("Display info: {}, {}", (*disp_info).wiz_title, (*disp_info).container_display_name) };
+        self.wiz_icon = unsafe { (*disp_info).class_icon };
         
         match class_name.to_string().as_str() {
             "user" => {
@@ -174,10 +177,10 @@ impl IDsAdminNewObjExt for MyNewUserWizard {
                 
             let mut propsheet: PROPSHEETPAGEW = PROPSHEETPAGEW {
                 dwSize: std::mem::size_of::<PROPSHEETPAGEW>() as u32,
-                dwFlags: PSP_DEFAULT,
+                dwFlags: PSP_DEFAULT | PSP_USEHICON,
                 hInstance: hinstance,
                 Anonymous1: PROPSHEETPAGEW_0 { pszTemplate: make_int_resource(*page) },
-                Anonymous2: PROPSHEETPAGEW_1 { pszIcon: PCWSTR::null() },
+                Anonymous2: PROPSHEETPAGEW_1 { hIcon: self.wiz_icon },
                 pszTitle: PCWSTR::null(),
                 pfnDlgProc: None,
                 lParam: LPARAM(0),
@@ -210,7 +213,7 @@ impl IDsAdminNewObjExt for MyNewUserWizard {
         Ok(())
     }
 
-    fn set_object(&self,ad_obj: &ComItf<dyn IADs>) -> ComResult<()> {
+    fn set_object(&self, ad_obj: &ComItf<dyn IADs>) -> ComResult<()> {
         log::info!("Keeping copy of new_object {:p}", ad_obj);
         *self.new_object.borrow_mut() = Some(ad_obj.to_owned());
         
@@ -233,14 +236,15 @@ impl IDsAdminNewObjExt for MyNewUserWizard {
         Ok(())
     }
 
-    fn write_data(&self,hwnd:ComLPARAM,ctx:u32) -> ComResult<()> {
+    fn write_data(&self, hwnd: ComLPARAM, ctx: ComDsaNewObjCtx) -> ComResult<()> {
+        log::error!("OnError called! {:?}", ctx.0);
         log::error!("WriteData called!");
-        todo!()
+        Err(ComError { hresult: E_INVALIDARG, error_info: None })
     }
 
-    fn on_error(&self,hwnd:ComLPARAM,hr:intercom::raw::HRESULT,ctx:u32) -> ComResult<()> {
-        log::error!("OnError called!");
-        todo!()
+    fn on_error(&self, hwnd: ComLPARAM, hr: intercom::raw::HRESULT, ctx: ComDsaNewObjCtx) -> ComResult<()> {
+        log::error!("OnError called! {:?}", ctx.0);
+        Err(ComError { hresult: E_INVALIDARG, error_info: None })
     }
 
     fn get_summary_info(&self) -> ComResult<BString> {

@@ -7,6 +7,13 @@ use intercom::{IUnknown, prelude::*, BString, Variant};
 use windows::{Win32::{UI::Controls::HPROPSHEETPAGE, Foundation::{LPARAM, BOOL}}, core::PCWSTR};
 use windows::Win32::UI::WindowsAndMessaging::HICON;
 
+use windows::Win32::Networking::ActiveDirectory::{
+    DSA_NEWOBJ_CTX_PRECOMMIT,
+    DSA_NEWOBJ_CTX_COMMIT,
+    DSA_NEWOBJ_CTX_POSTCOMMIT,
+    DSA_NEWOBJ_CTX_CLEANUP,
+};
+
 #[derive(intercom::ExternType, intercom::ForeignType, intercom::ExternInput)]
 #[allow(non_camel_case_types)]
 #[repr(transparent)]
@@ -51,6 +58,48 @@ pub struct DsaNewObjDispInfo {
     pub class_icon: HICON,
     pub wiz_title: LPCWSTR,
     pub container_display_name: LPCWSTR,
+}
+
+// TODO: DsaNewObjCtx seems to work, need to find out how.
+
+#[derive(Debug)]
+#[repr(C)]
+pub enum DsaNewObjCtx {
+    Precommit,
+    Commit,
+    PostCommit,
+    Cleanup,
+    Unknown(u32),
+}
+
+#[derive(intercom::ExternType, intercom::ForeignType, intercom::ExternInput)]
+#[allow(non_camel_case_types)]
+#[repr(transparent)]
+pub struct ComDsaNewObjCtx(pub DsaNewObjCtx);
+
+impl From<u32> for ComDsaNewObjCtx {
+    fn from(value: u32) -> Self {
+        let context = match value {
+            DSA_NEWOBJ_CTX_PRECOMMIT => DsaNewObjCtx::Precommit,            
+            DSA_NEWOBJ_CTX_COMMIT => DsaNewObjCtx::Commit,
+            DSA_NEWOBJ_CTX_POSTCOMMIT => DsaNewObjCtx::PostCommit,
+            DSA_NEWOBJ_CTX_CLEANUP => DsaNewObjCtx::Cleanup,
+            _ => DsaNewObjCtx::Unknown(value)
+        };
+        ComDsaNewObjCtx(context)        
+    }
+}
+
+impl Into<u32> for ComDsaNewObjCtx {
+    fn into(self) -> u32 {
+        match self.0 {
+            DsaNewObjCtx::Precommit => DSA_NEWOBJ_CTX_PRECOMMIT,
+            DsaNewObjCtx::Commit => DSA_NEWOBJ_CTX_PRECOMMIT,
+            DsaNewObjCtx::PostCommit => DSA_NEWOBJ_CTX_PRECOMMIT,
+            DsaNewObjCtx::Cleanup => DSA_NEWOBJ_CTX_PRECOMMIT,
+            DsaNewObjCtx::Unknown(n) => n,
+        }
+    }
 }
 
 #[com_interface(com_iid = "6088EAE2-E7BF-11D2-82AF-00C04F68928B")]
@@ -101,7 +150,7 @@ pub trait IDsAdminNewObjExt: IUnknown {
     /// another object, *iads* will be `NULL`. The copy operation if only
     /// supported for user objects.
     fn initialize(
-        &self,
+        &mut self,
         iadscontainer: &ComItf<dyn IADsContainer>,
         iads: Option<&ComItf<dyn IADs>>,
         class_name: LPCWSTR,
@@ -194,7 +243,7 @@ pub trait IDsAdminNewObjExt: IUnknown {
     /// # Returns
     /// 
     /// Returns `S_OK` if successful or an OLE-defined error code otherwise.
-    fn write_data(&self, hwnd: ComLPARAM, ctx: u32) -> ComResult<()>;
+    fn write_data(&self, hwnd: ComLPARAM, ctx: ComDsaNewObjCtx) -> ComResult<()>;
     
     /// Called when an error has occurred in the wizard pages.
     /// 
@@ -232,7 +281,7 @@ pub trait IDsAdminNewObjExt: IUnknown {
     /// was handled by the extension or an OLE-defined error code to cause the
     /// system to display an error message. The return value is ignored for a
     /// secondary creation extension.
-    fn on_error(&self, hwnd: ComLPARAM, hr: intercom::raw::HRESULT, ctx: u32) -> ComResult<()>;
+    fn on_error(&self, hwnd: ComLPARAM, hr: intercom::raw::HRESULT, ctx: ComDsaNewObjCtx) -> ComResult<()>;
     
     /// Called to obtain a string that contains a summary of the data gathered
     /// by the new object wizard extension page. This string is displayed in the

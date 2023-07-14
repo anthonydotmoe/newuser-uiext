@@ -1,6 +1,9 @@
 #define IDD_FORMVIEW                    101
 #define IDC_STATIC                      -1
-#define DS_SETFONT                      64
+
+#define DS_SETFONT                      0x40L
+#define DS_FIXEDSYS                     0x0008L
+#define DS_SHELLFONT                    (DS_SETFONT | DS_FIXEDSYS)
 
 #define BS_PUSHBUTTON       0x00000000L
 #define BS_DEFPUSHBUTTON    0x00000001L
@@ -123,6 +126,9 @@
 
 #define LANG_NEUTRAL                    0x00
 #define SUBLANG_NEUTRAL                 0x00
+
+#define RT_MANIFEST                         24
+#define ISOLATIONAWARE_MANIFEST_RESOURCE_ID  2
 
 // RUST
 
