@@ -3,13 +3,15 @@ use core::fmt;
 use std::ffi::OsString;
 use std::os::windows::ffi::OsStringExt;
 
-use intercom::{IUnknown, prelude::*, BString};
-use windows::{Win32::{UI::Controls::{LPFNSVADDPROPSHEETPAGE, HPROPSHEETPAGE}, Foundation::{LPARAM, BOOL}}, core::PCWSTR};
+use intercom::{IUnknown, prelude::*, BString, Variant};
+use windows::{Win32::{UI::Controls::HPROPSHEETPAGE, Foundation::{LPARAM, BOOL}}, core::PCWSTR};
 
 #[derive(intercom::ExternType, intercom::ForeignType, intercom::ExternInput)]
 #[allow(non_camel_case_types)]
 #[repr(transparent)]
-pub struct ComLPFNSVADDPROPSHEETPAGE(pub unsafe extern "stdcall" fn(param0: HPROPSHEETPAGE, param1: LPARAM) -> BOOL);
+pub struct ComLPFNSVADDPROPSHEETPAGE(
+    pub unsafe extern "stdcall" fn(param0: HPROPSHEETPAGE, param1: LPARAM) -> BOOL
+);
 
 #[derive(intercom::ExternType, intercom::ForeignType, intercom::ExternInput)]
 #[allow(non_camel_case_types)]
@@ -149,7 +151,7 @@ pub trait IDsAdminNewObjExt: IUnknown {
     /// # Returns
     /// 
     /// The method should always return S_OK
-    fn set_object(&self, ad_obj: &ComItf<dyn IUnknown>) -> ComResult<()>;
+    fn set_object(&self, ad_obj: &ComItf<dyn IADs>) -> ComResult<()>;
     
     /// Called to enable the object creation wizard extension to write its data
     /// into an object in Active Directory Domain Services.
@@ -181,7 +183,7 @@ pub trait IDsAdminNewObjExt: IUnknown {
     /// # Returns
     /// 
     /// Returns `S_OK` if successful or an OLE-defined error code otherwise.
-    fn write_data(&self, ) -> ComResult<()>;
+    fn write_data(&self, hwnd: ComLPARAM, ctx: u32) -> ComResult<()>;
     
     /// Called when an error has occurred in the wizard pages.
     /// 
@@ -219,7 +221,7 @@ pub trait IDsAdminNewObjExt: IUnknown {
     /// was handled by the extension or an OLE-defined error code to cause the
     /// system to display an error message. The return value is ignored for a
     /// secondary creation extension.
-    fn on_error(&self, ) -> ComResult<()>;
+    fn on_error(&self, hwnd: ComLPARAM, hr: intercom::raw::HRESULT, ctx: u32) -> ComResult<()>;
     
     /// Called to obtain a string that contains a summary of the data gathered
     /// by the new object wizard extension page. This string is displayed in the
@@ -228,22 +230,25 @@ pub trait IDsAdminNewObjExt: IUnknown {
     /// # Returns
     /// 
     /// `BString` - Pointer to a BSTR value that receives the summary text.
-    fn get_summary_info(&self, ) -> ComResult<BString>;
+    fn get_summary_info(&self) -> ComResult<BString>;
 }
 
 #[com_interface(com_iid = "001677D0-FD16-11CE-ABC4-02608C9E7553")]
 pub trait IADsContainer: IDispatch {
-    fn get_count(&self, ) -> ComResult<()>;
-    fn get_new_enum(&self, ) -> ComResult<()>;
-    fn get_filter(&self, ) -> ComResult<()>;
-    fn put_filter(&self, ) -> ComResult<()>;
-    fn get_hints(&self, ) -> ComResult<()>;
-    fn put_hints(&self, ) -> ComResult<()>;
-    fn get_object(&self, ) -> ComResult<()>;
-    fn create(&self, ) -> ComResult<()>;
-    fn delete(&self, ) -> ComResult<()>;
-    fn copy_here(&self, ) -> ComResult<()>;
-    fn move_here(&self, ) -> ComResult<()>;
+    fn get_count(&self) -> ComResult<i32>;
+
+    #[allow(non_snake_case)]
+    fn get___new_enum(&self) -> ComResult<ComRc<dyn IEnumVARIANT>>;
+
+    fn get_filter(&self) -> ComResult<Variant>;
+    fn put_filter(&self, filter: Variant) -> ComResult<()>;
+    fn get_hints(&self) -> ComResult<Variant>;
+    fn put_hints(&self, hints: Variant) -> ComResult<()>;
+    fn get_object(&self, class_name: BString, rel_name: BString) -> ComResult<ComRc<dyn IDispatch>>;
+    fn create(&self, class_name: BString, rel_name: BString) -> ComResult<ComRc<dyn IDispatch>>;
+    fn delete(&self, class_name: BString, rel_name: BString) -> ComResult<()>;
+    fn copy_here(&self, source: BString, dest: BString) -> ComResult<ComRc<dyn IDispatch>>;
+    fn move_here(&self, source: BString, dest: BString) -> ComResult<ComRc<dyn IDispatch>>;
 }
 
 #[com_interface(com_iid = "FD8256D0-FD15-11CE-ABC4-02608C9E7553")]
@@ -254,25 +259,56 @@ pub trait IADs: IDispatch {
     fn ads_path(&self) -> ComResult<BString>;
     fn parent(&self) -> ComResult<BString>;
     fn schema(&self) -> ComResult<BString>;
-    fn get_info(&self, ) -> ComResult<()>;
-    fn set_info(&self, ) -> ComResult<()>;
-    fn get(&self, ) -> ComResult<()>;
-    fn put(&self, ) -> ComResult<()>;
-    fn get_ex(&self, ) -> ComResult<()>;
-    fn put_ex(&self, ) -> ComResult<()>;
-    fn get_info_ex(&self, ) -> ComResult<()>;
+    fn get_info(&self) -> ComResult<()>;
+    fn set_info(&self) -> ComResult<()>;
+    fn get(&self, name: BString) -> ComResult<Variant>;
+    fn put(&self, name: BString, prop: Variant) -> ComResult<()>;
+    fn get_ex(&self, name: BString) -> ComResult<Variant>;
+    fn put_ex(&self, name: BString, prop: Variant) -> ComResult<()>;
+    fn get_info_ex(&self, properties: Variant, _rsvd: i32) -> ComResult<()>;
 }
 
 #[com_interface(com_iid = "F2573587-E6FC-11D2-82AF-00C04F68928B")]
 pub trait IDsAdminNewObj: IUnknown {
-    fn set_buttons(&self, ) -> ComResult<()>;
-    fn get_page_counts(&self, ) -> ComResult<()>;
+    fn set_buttons(&self, curr_index: u32, valid: bool) -> ComResult<()>;
+    fn get_page_counts(&self) -> ComResult<(i32, i32)>;
 }
 
 #[com_interface(com_iid = "00020400-0000-0000-C000-000000000046")]
 pub trait IDispatch: IUnknown {
-    fn get_type_info_count(&self, ) -> ComResult<()>;
-    fn get_type_info(&self, ) -> ComResult<()>;    
-    fn get_ids_of_names(&self, ) -> ComResult<()>;    
-    fn invoke(&self, ) -> ComResult<()>;    
+    fn get_type_info_count(&self) -> ComResult<u32>;
+    fn get_type_info(&self, type_info: u32, lcid: u32) -> ComResult<ComRc<dyn ITypeInfo>>;
+    fn get_ids_of_names(&self, _riid: intercom::GUID, names: BString, count: u32, lcid: u32) -> ComResult<i32>;    
+    fn invoke(&self, dispid: i32, _riid: intercom::GUID, lcid: u32, flags: u16, disp_params: ComLPARAM) -> ComResult<(Variant, u32, u32)>;
+}
+
+#[com_interface(com_iid = "00020404-0000-0000-C000-000000000046")]
+pub trait IEnumVARIANT: IUnknown {
+    fn next(&self, celt: u32) -> ComResult<(Variant, i32)>;
+    fn skip(&self, celt: u32) -> ComResult<()>;
+    fn reset(&self) -> ComResult<()>;
+    fn clone(&self) -> ComResult<ComRc<dyn IEnumVARIANT>>;
+}
+
+#[com_interface(com_iid = "00020401-0000-0000-c000-000000000046")]
+pub trait ITypeInfo: IUnknown {
+    fn get_type_attr(&self) -> ComResult<()>;
+    fn get_type_alloc(&self) -> ComResult<()>;
+    fn get_func_desc(&self) -> ComResult<()>;
+    fn get_var_desc(&self) -> ComResult<()>;
+    fn get_names(&self) -> ComResult<()>;
+    fn get_ref_type_of_impl_type(&self) -> ComResult<()>;
+    fn get_impl_type_flags(&self) -> ComResult<()>;
+    fn get_ids_of_names(&self) -> ComResult<()>;
+    fn invoke(&self) -> ComResult<()>;
+    fn get_documentation(&self) -> ComResult<()>;
+    fn get_dll_entry(&self) -> ComResult<()>;
+    fn get_ref_type_info(&self) -> ComResult<()>;
+    fn address_of_member(&self) -> ComResult<()>;
+    fn create_instance(&self) -> ComResult<()>;
+    fn get_mops(&self) -> ComResult<()>;
+    fn get_containing_type_lib(&self) -> ComResult<()>;
+    fn release_type_attr(&self) -> ComResult<()>;
+    fn release_func_desc(&self) -> ComResult<()>;
+    fn release_var_desc(&self) -> ComResult<()>;
 }

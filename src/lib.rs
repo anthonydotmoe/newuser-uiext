@@ -30,7 +30,7 @@ struct MyNewUserWizard {
     
     obj_container: std::cell::RefCell<Option<ComRc<dyn IADsContainer>>>,    
     copy_source: std::cell::RefCell<Option<ComRc<dyn IADs>>>,
-    
+    new_object: std::cell::RefCell<Option<ComRc<dyn IADs>>>,
 
 }
 
@@ -150,7 +150,7 @@ impl IDsAdminNewObjExt for MyNewUserWizard {
             dwSize: std::mem::size_of::<PROPSHEETPAGEW>() as u32,
             dwFlags: PSP_DEFAULT,
             hInstance: hinstance,
-            Anonymous1: PROPSHEETPAGEW_0 { pszTemplate: make_int_resource(resource_consts::DIALOG_1) },
+            Anonymous1: PROPSHEETPAGEW_0 { pszTemplate: make_int_resource(resource_consts::DIALOG_2) },
             Anonymous2: PROPSHEETPAGEW_1 { pszIcon: PCWSTR::null() },
             pszTitle: PCWSTR::null(),
             pfnDlgProc: None,
@@ -165,7 +165,7 @@ impl IDsAdminNewObjExt for MyNewUserWizard {
         
         log::debug!("Created page object: {:p}", &page1);
         
-        let page1_h = unsafe { CreatePropertySheetPageW(&mut page1) };
+        let page1_h = unsafe { CreatePropertySheetPageW(&mut page1 as _) };
         
         log::debug!("Got HPROPSHEETPAGE: {:?}", &page1_h);
         
@@ -183,22 +183,23 @@ impl IDsAdminNewObjExt for MyNewUserWizard {
         Ok(())
     }
 
-    fn set_object(&self,ad_obj: &ComItf<dyn IUnknown>) -> ComResult<()> {
-        log::error!("SetObject called!");
+    fn set_object(&self,ad_obj: &ComItf<dyn IADs>) -> ComResult<()> {
+        *self.new_object.borrow_mut() = Some(ad_obj.to_owned());
+        log::info!("Keeping copy of new_object {:p}", ad_obj);
         Ok(())
     }
 
-    fn write_data(&self,) -> ComResult<()> {
+    fn write_data(&self,hwnd:ComLPARAM,ctx:u32) -> ComResult<()> {
         log::error!("WriteData called!");
         todo!()
     }
 
-    fn on_error(&self,) -> ComResult<()> {
+    fn on_error(&self,hwnd:ComLPARAM,hr:intercom::raw::HRESULT,ctx:u32) -> ComResult<()> {
         log::error!("OnError called!");
         todo!()
     }
 
-    fn get_summary_info(&self,) -> ComResult<BString> {
+    fn get_summary_info(&self) -> ComResult<BString> {
         let result_string: &'static str = "This is the result string";
         
         Ok(BString::from(result_string))
