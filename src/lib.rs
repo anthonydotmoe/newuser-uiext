@@ -1,13 +1,23 @@
 mod interface;
-use interface::*;
+use interface::{
+    IADs,
+    IADsContainer,
+    IDsAdminNewObj,
+    IDsAdminNewObjExt,
+    
+    types::{
+        LPCWSTR, ComDsaNewObjCtx, ComLPFNSVADDPROPSHEETPAGE, DsaNewObjDispInfo, ComLPARAM,
+    }
+};
 
 mod resource_consts;
 
 use intercom::{ prelude::*, BString, Variant, raw::E_INVALIDARG };
 
-use windows::{Win32::{UI::Controls::{PROPSHEETPAGEW, PROPSHEETPAGEW_0, PROPSHEETPAGEW_1, PROPSHEETPAGEW_2, PSP_DEFAULT, CreatePropertySheetPageW, PSP_USEHICON}, Foundation::{HMODULE, LPARAM, HANDLE} }, core::PCWSTR};
+use windows::{Win32::{UI::{Controls::{PROPSHEETPAGEW, PROPSHEETPAGEW_0, PROPSHEETPAGEW_1, PROPSHEETPAGEW_2, PSP_DEFAULT, CreatePropertySheetPageW, PSP_USEHICON}, WindowsAndMessaging::{WM_INITDIALOG, GWL_USERDATA, WM_DESTROY, GetWindowLongPtrW, DefWindowProcW}}, Foundation::{HMODULE, LPARAM, HANDLE, HWND, WPARAM} }, core::PCWSTR};
 use windows::Win32::System::LibraryLoader::{GetModuleHandleExW, GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS, GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT};
 use windows::Win32::UI::WindowsAndMessaging::HICON;
+use windows::Win32::UI::WindowsAndMessaging::SetWindowLongPtrW;
 
 com_library!(
     on_load = on_load,
@@ -32,7 +42,7 @@ struct MyNewUserWizard {
     obj_container: std::cell::RefCell<Option<ComRc<dyn IADsContainer>>>,    
     copy_source: std::cell::RefCell<Option<ComRc<dyn IADs>>>,
     new_object: std::cell::RefCell<Option<ComRc<dyn IADs>>>,
-    wizard: std::cell::RefCell<Option<ComRc<dyn IDsAdminNewObj>>>,
+    wizard: Option<ComRc<dyn IDsAdminNewObj>>,
     wiz_icon: HICON,
 
 }
@@ -82,12 +92,14 @@ appropriate properties using the IADs::Put or IADs::PutEx method. The IADs
 interface is provided to the extension in the SetObject method. The
 extension should not commit the cached properties by calling IADs::SetInfo.
 When all the properties are written, the primary object creation extension
-commits the changes by calling IADs::SetInfo.
+commits the changes by calling IADs::SetInfo. hwnd is given to be used as a
+parent window for possible error messages.
 
 6. OnError
 
 If an error occurs, the extension will be notified of the error and during
-which operation it occured when the OnError method is called.
+which operation it occured when the OnError method is called. hwnd is given to
+be used as a parent window for possible error messages.
 
 # Implementing a Primary Object Creation Wizard
 
@@ -139,7 +151,7 @@ impl IDsAdminNewObjExt for MyNewUserWizard {
         }
         
         *self.obj_container.borrow_mut() = Some(obj_container.to_owned());
-        *self.wizard.borrow_mut() = Some(adminnewobj.to_owned());
+        self.wizard = Some(adminnewobj.to_owned());
         
         let maybe_itf = self.copy_source.borrow();
         if let Some(ref itf) = *maybe_itf {
@@ -172,6 +184,11 @@ impl IDsAdminNewObjExt for MyNewUserWizard {
         let hinstance = get_dll_hinstance();
         log::debug!("got hInstance: {:?}", &hinstance);
         
+        // Very unsafe! Getting a reference to self to use in the windowproc
+        let this_clone = self.clone();
+        let this_ptr = Box::into_raw(Box::new(this_clone)) as *mut _;
+        let this_param = unsafe { std::mem::transmute::<*mut MyNewUserWizard, LPARAM>(this_ptr) };
+        
         let pages = vec![resource_consts::DIALOG_1, resource_consts::DIALOG_2];
         for page in pages.iter() {
                 
@@ -180,10 +197,10 @@ impl IDsAdminNewObjExt for MyNewUserWizard {
                 dwFlags: PSP_DEFAULT | PSP_USEHICON,
                 hInstance: hinstance,
                 Anonymous1: PROPSHEETPAGEW_0 { pszTemplate: make_int_resource(*page) },
-                Anonymous2: PROPSHEETPAGEW_1 { hIcon: self.wiz_icon },
+                Anonymous2: PROPSHEETPAGEW_1 { pszIcon: PCWSTR::null() },
                 pszTitle: PCWSTR::null(),
-                pfnDlgProc: None,
-                lParam: LPARAM(0),
+                pfnDlgProc: Some(dlgproc),
+                lParam: this_param,
                 pfnCallback: None,
                 pcRefParent: std::ptr::null_mut(),
                 pszHeaderTitle: PCWSTR::null(),
@@ -214,26 +231,15 @@ impl IDsAdminNewObjExt for MyNewUserWizard {
     }
 
     fn set_object(&self, ad_obj: &ComItf<dyn IADs>) -> ComResult<()> {
-        log::info!("Keeping copy of new_object {:p}", ad_obj);
-        *self.new_object.borrow_mut() = Some(ad_obj.to_owned());
-        
-        let maybe_itf = self.wizard.borrow();
-        if let Some(ref itf) = *maybe_itf {
-            if let Ok((total_pages, first_page)) = itf.get_page_counts() {
-                log::info!("Got total_pages: {}, first_page: {}", &total_pages, &first_page);
-                log::info!("Set next button to disabled on page {}", 0);
-                match itf.set_buttons(0, false) {
-                    Ok(_) => {
-                        log::info!("Setting next button to disabled worked");
-                    }
-                    Err(e) => {
-                        log::error!("Setting next button to disabled didn't work: {}", e.to_string())
-                    }
-                }
-            }
-            
+        match *self.new_object.borrow_mut() {
+            None => {
+                log::info!("Keeping copy of new_object {:p}", ad_obj);
+                *self.new_object.borrow_mut() = Some(ad_obj.to_owned());
+                Ok(())
+            },
+            Some(_) => Ok(())
         }
-        Ok(())
+        
     }
 
     fn write_data(&self, hwnd: ComLPARAM, ctx: ComDsaNewObjCtx) -> ComResult<()> {
@@ -277,4 +283,48 @@ fn get_dll_hinstance() -> HMODULE {
 
 const fn make_int_resource(resource_id: u16) -> PCWSTR {
     PCWSTR(resource_id as _)
+}
+
+unsafe extern "system" fn dlgproc(hwndDlg: HWND, message: u32, wparam: WPARAM, lparam: LPARAM) -> isize {
+    match message {
+        WM_INITDIALOG => {
+            log::debug!("WM_INITDIALOG received by dlgproc");
+            let this = std::mem::transmute::<LPARAM, *mut MyNewUserWizard>(lparam);
+            
+            let maybe_itf = &this.as_ref().unwrap().wizard;
+            if let Some(itf) = maybe_itf {
+                if let Ok((total_pages, first_page)) = itf.get_page_counts() {
+                    log::info!("Got total_pages: {}, first_page: {}", &total_pages, &first_page);
+                    log::info!("Set next button to disabled on page {}", 0);
+                    match itf.set_buttons(0, false) {
+                        Ok(_) => {
+                            log::info!("Setting next button to disabled worked");
+                        }
+                        Err(e) => {
+                            log::error!("Setting next button to disabled didn't work: {}", e.to_string())
+                        }
+                    }
+                } else {
+                    log::error!("Couldn't get total_pages, first_page from itf->get_page_counts()");
+                }
+            } else {
+                log::error!("Couldn't get itf from (*this).wizard.borrow()");
+            }
+
+            // Store the pointer in a GWL_USERDATA so we can retrieve it later
+            SetWindowLongPtrW(hwndDlg, GWL_USERDATA, this as _);
+            true.into()
+        }
+        WM_DESTROY => {
+            log::debug!("WM_DESTROY received by dlgproc");
+            let this = GetWindowLongPtrW(hwndDlg, GWL_USERDATA) as *mut MyNewUserWizard;
+            drop(Box::from_raw(this)); // Re-box the pointer to deallocate it.
+            true.into()
+        }
+        _ => {
+            log::debug!("{} received by dlgproc", message);
+            DefWindowProcW(hwndDlg, message, wparam, lparam);
+            true.into()
+        },
+    }
 }
