@@ -3,10 +3,12 @@ use interface::{
     IADs,
     IADsContainer,
     IDsAdminNewObj,
+    IContextMenu,
     IDsAdminNewObjExt,
+    IShellExtInit,
     
     types::{
-        LPCWSTR, ComDsaNewObjCtx, ComLPFNSVADDPROPSHEETPAGE, DsaNewObjDispInfo, ComLPARAM,
+        LPCWSTR, ComDsaNewObjCtx, ComLPFNSVADDPROPSHEETPAGE, DsaNewObjDispInfo, ComLPARAM, ComHMENU, ComINVOKECOMMANDINFO, CtxMenuInvokeFlags,
     }
 };
 
@@ -14,7 +16,7 @@ mod resource_consts;
 
 use intercom::{ prelude::*, BString, Variant, raw::E_INVALIDARG };
 
-use windows::{Win32::{UI::{Controls::{PROPSHEETPAGEW, PROPSHEETPAGEW_0, PROPSHEETPAGEW_1, PROPSHEETPAGEW_2, PSP_DEFAULT, CreatePropertySheetPageW, PSP_USEHICON}, WindowsAndMessaging::{WM_INITDIALOG, GWL_USERDATA, WM_DESTROY, GetWindowLongPtrW, DefWindowProcW}}, Foundation::{HMODULE, LPARAM, HANDLE, HWND, WPARAM} }, core::PCWSTR};
+use windows::{Win32::{UI::{Controls::{PROPSHEETPAGEW, PROPSHEETPAGEW_0, PROPSHEETPAGEW_1, PROPSHEETPAGEW_2, PSP_DEFAULT, CreatePropertySheetPageW, PSP_USEHICON}, WindowsAndMessaging::{WM_INITDIALOG, GWL_USERDATA, WM_DESTROY, GetWindowLongPtrW, DefWindowProcW, InsertMenuItemW, MENUITEMINFOW, MIIM_STRING, MENU_ITEM_STATE, MIIM_ID}}, Foundation::{HMODULE, LPARAM, HANDLE, HWND, WPARAM}, Graphics::Gdi::HBITMAP }, core::PCWSTR, w};
 use windows::Win32::System::LibraryLoader::{GetModuleHandleExW, GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS, GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT};
 use windows::Win32::UI::WindowsAndMessaging::HICON;
 use windows::Win32::UI::WindowsAndMessaging::SetWindowLongPtrW;
@@ -35,7 +37,7 @@ fn on_load() {
     .unwrap();
 }
 
-#[com_class(clsid = "1af9e4e5-d2fc-41e6-9a7e-3fbdb38a34b4", IDsAdminNewObjExt)]
+#[com_class(clsid = "1af9e4e5-d2fc-41e6-9a7e-3fbdb38a34b4", IDsAdminNewObjExt, IShellExtInit, IContextMenu)]
 #[derive(Default)]
 struct MyNewUserWizard {
     
@@ -242,13 +244,13 @@ impl IDsAdminNewObjExt for MyNewUserWizard {
         
     }
 
-    fn write_data(&self, hwnd: ComLPARAM, ctx: ComDsaNewObjCtx) -> ComResult<()> {
+    fn write_data(&self, _hwnd: ComLPARAM, ctx: ComDsaNewObjCtx) -> ComResult<()> {
         log::error!("OnError called! {:?}", ctx.0);
         log::error!("WriteData called!");
         Err(ComError { hresult: E_INVALIDARG, error_info: None })
     }
 
-    fn on_error(&self, hwnd: ComLPARAM, hr: intercom::raw::HRESULT, ctx: ComDsaNewObjCtx) -> ComResult<()> {
+    fn on_error(&self, _hwnd: ComLPARAM, _hr: intercom::raw::HRESULT, ctx: ComDsaNewObjCtx) -> ComResult<()> {
         log::error!("OnError called! {:?}", ctx.0);
         Err(ComError { hresult: E_INVALIDARG, error_info: None })
     }
@@ -257,6 +259,66 @@ impl IDsAdminNewObjExt for MyNewUserWizard {
         let result_string: &'static str = "This is the result string";
         
         Ok(BString::from(result_string))
+    }
+}
+
+impl IShellExtInit for MyNewUserWizard {
+    fn initialize(&self, _pidlfolder: isize, _dataobj: ComRc<dyn interface::IDataObject>, _hkeyprogid: isize) -> ComResult<()> {
+        Ok(())
+    }
+}
+
+impl IContextMenu for MyNewUserWizard {
+    fn query_context_menu(&self, hmenu: ComHMENU, index_menu:u32,id_cmd_first:u32,id_cmd_last:u32,flags:u32) -> ComResult<()> {
+        log::debug!("QueryContextMenu(): indexMenu: {}, idCmdFirst: {}, idCmdLast: {}, uFlags: {}", index_menu, id_cmd_first, id_cmd_last, flags);
+        
+        if flags == 0 {
+            let hmenu = hmenu.0;
+            
+            let text = w!("Offboard...");
+            
+            let menuitem = MENUITEMINFOW {
+                cbSize: std::mem::size_of::<MENUITEMINFOW>() as u32,
+                fMask: MIIM_STRING | MIIM_ID,
+                fType: windows::Win32::UI::WindowsAndMessaging::MENU_ITEM_TYPE(0),
+                fState: MENU_ITEM_STATE(0),
+                wID: id_cmd_first,
+                hSubMenu: windows::Win32::UI::WindowsAndMessaging::HMENU(0),
+                hbmpChecked: HBITMAP(0),
+                hbmpUnchecked: HBITMAP(0),
+                dwItemData: 0,
+                dwTypeData: windows::core::PWSTR(text.as_ptr() as *mut u16),
+                cch: 0,
+                hbmpItem: HBITMAP(0),
+            };
+            
+            let ret: bool = unsafe { InsertMenuItemW(hmenu, id_cmd_first, false, &menuitem).into() };
+            
+            match ret {
+                true => {
+                    log::debug!("InsertMenuItemW returned true");
+                    Err(ComError::new_hr(intercom::raw::HRESULT { hr: 1 }))
+                },
+                false => {
+                    log::error!("InsertMenuItemW returned false");
+                    Err(ComError::new_hr(intercom::raw::HRESULT { hr: 0x7FFF0001 }))
+                }
+            }
+        } else {
+            log::debug!("Exiting QueryContextMenu() flag is inappropriate.");
+            Err(ComError::new_hr(intercom::raw::HRESULT { hr: 0x7FFF0001 }))
+        }
+        
+    }
+    
+    fn get_command_string(&self, _id_cmd:u32, _flags: u32, _rsvd: usize, _name: LPCWSTR, _name_max: u32) -> ComResult<()> {
+        Ok(())
+    }
+    
+    fn invoke_command(&self, ici: *mut ComINVOKECOMMANDINFO) -> ComResult<()> {
+        let flags: CtxMenuInvokeFlags = unsafe { std::mem::transmute::<u32, CtxMenuInvokeFlags>((*ici).0.fMask) };
+        unsafe { log::debug!("InvokeCommand(): cbSize: {}, fMask: {:?}", (*ici).0.cbSize, flags) };
+        Ok(())
     }
 }
 
@@ -285,7 +347,7 @@ const fn make_int_resource(resource_id: u16) -> PCWSTR {
     PCWSTR(resource_id as _)
 }
 
-unsafe extern "system" fn dlgproc(hwndDlg: HWND, message: u32, wparam: WPARAM, lparam: LPARAM) -> isize {
+unsafe extern "system" fn dlgproc(hwnd_dlg: HWND, message: u32, wparam: WPARAM, lparam: LPARAM) -> isize {
     match message {
         WM_INITDIALOG => {
             log::debug!("WM_INITDIALOG received by dlgproc");
@@ -312,18 +374,18 @@ unsafe extern "system" fn dlgproc(hwndDlg: HWND, message: u32, wparam: WPARAM, l
             }
 
             // Store the pointer in a GWL_USERDATA so we can retrieve it later
-            SetWindowLongPtrW(hwndDlg, GWL_USERDATA, this as _);
+            SetWindowLongPtrW(hwnd_dlg, GWL_USERDATA, this as _);
             true.into()
         }
         WM_DESTROY => {
             log::debug!("WM_DESTROY received by dlgproc");
-            let this = GetWindowLongPtrW(hwndDlg, GWL_USERDATA) as *mut MyNewUserWizard;
+            let this = GetWindowLongPtrW(hwnd_dlg, GWL_USERDATA) as *mut MyNewUserWizard;
             drop(Box::from_raw(this)); // Re-box the pointer to deallocate it.
             true.into()
         }
         _ => {
             log::debug!("{} received by dlgproc", message);
-            DefWindowProcW(hwndDlg, message, wparam, lparam);
+            DefWindowProcW(hwnd_dlg, message, wparam, lparam);
             true.into()
         },
     }
