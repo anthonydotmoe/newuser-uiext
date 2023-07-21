@@ -100,7 +100,7 @@ pub trait IDsAdminNewObjExt: IUnknown {
     /// This method is identical in format and operation to the
     /// `IShellPropSheetExt::AddPages` method.
     fn add_pages(
-        &self,
+        &mut self,
         addpagefn: ComLPFNSVADDPROPSHEETPAGE,
         param: ComLPARAM
     ) -> ComResult<()>;

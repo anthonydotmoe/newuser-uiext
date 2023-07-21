@@ -1,3 +1,4 @@
+pub const ISOLATIONAWARE_MANIFEST_RESOURCE_ID: u16 = 2;
 pub const ICON_1: u16 = 1;
 pub const DIALOG_1: u16 = 1001;
 pub const DIALOG_2: u16 = 1002;

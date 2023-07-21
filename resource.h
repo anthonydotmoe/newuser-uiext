@@ -128,9 +128,10 @@
 #define SUBLANG_NEUTRAL                 0x00
 
 #define RT_MANIFEST                         24
-#define ISOLATIONAWARE_MANIFEST_RESOURCE_ID  2
 
 // RUST
+
+#define ISOLATIONAWARE_MANIFEST_RESOURCE_ID  2
 
 #define ICON_1                          1
 #define DIALOG_1                        1001
