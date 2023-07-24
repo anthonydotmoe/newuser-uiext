@@ -13,7 +13,10 @@ use interface::{
     }
 };
 
+use rand::Rng;
+
 // mod propsheet;
+mod wm;
 
 mod actctx;
 
@@ -21,7 +24,7 @@ mod resource_consts;
 
 use intercom::{ prelude::*, BString, Variant, raw::E_INVALIDARG };
 
-use windows::{Win32::{UI::{Controls::{PROPSHEETPAGEW, PROPSHEETPAGEW_0, PROPSHEETPAGEW_1, PROPSHEETPAGEW_2, PSP_DEFAULT, CreatePropertySheetPageW, PSP_HIDEHEADER, InitCommonControlsEx, INITCOMMONCONTROLSEX, ICC_STANDARD_CLASSES}, WindowsAndMessaging::{WM_INITDIALOG, GWL_USERDATA, WM_DESTROY, GetWindowLongPtrW, DefWindowProcW, InsertMenuItemW, MENUITEMINFOW, MIIM_STRING, MENU_ITEM_STATE, MIIM_ID}}, Foundation::{HMODULE, LPARAM, HANDLE, HWND, WPARAM}, Graphics::Gdi::HBITMAP }, core::PCWSTR, w};
+use windows::{Win32::{UI::{Controls::{PROPSHEETPAGEW, PROPSHEETPAGEW_0, PROPSHEETPAGEW_1, PROPSHEETPAGEW_2, PSP_DEFAULT, CreatePropertySheetPageW, PSP_HIDEHEADER, InitCommonControlsEx, INITCOMMONCONTROLSEX, ICC_STANDARD_CLASSES}, WindowsAndMessaging::{WM_INITDIALOG, GWL_USERDATA, WM_DESTROY, DefWindowProcW, InsertMenuItemW, MENUITEMINFOW, MIIM_STRING, MENU_ITEM_STATE, MIIM_ID, GetDlgItem, STM_SETICON, SendMessageW, WM_SETTEXT, WM_COMMAND, BN_CLICKED}}, Foundation::{HMODULE, LPARAM, HANDLE, HWND, WPARAM}, Graphics::Gdi::HBITMAP }, core::PCWSTR, w};
 use windows::Win32::System::LibraryLoader::{GetModuleHandleExW, GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS, GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT};
 use windows::Win32::UI::WindowsAndMessaging::HICON;
 use windows::Win32::UI::WindowsAndMessaging::SetWindowLongPtrW;
@@ -40,18 +43,22 @@ fn on_load() {
         LevelFilter::Trace,
     )
     .unwrap();
+    let test = generate_password();
+    log::debug!("This is a password: {}", test);
 }
 
 #[com_class(clsid = "1af9e4e5-d2fc-41e6-9a7e-3fbdb38a34b4", IDsAdminNewObjExt, IShellExtInit, IContextMenu)]
 #[derive(Default)]
 struct MyNewUserWizard {
     
+    debug: i32,
     obj_container: std::cell::RefCell<Option<ComRc<dyn IADsContainer>>>,    
     copy_source: std::cell::RefCell<Option<ComRc<dyn IADs>>>,
-    new_object: std::cell::RefCell<Option<ComRc<dyn IADs>>>,
+    new_object: Option<ComRc<dyn IADs>>,
     wizard: Option<ComRc<dyn IDsAdminNewObj>>,
     wiz_icon: HICON,
     actctx: Option<ReleaseActCtxGuard>,
+    obj_dest_str: String,
 
 }
 
@@ -66,8 +73,12 @@ impl IDsAdminNewObjExt for MyNewUserWizard {
     ) -> ComResult<()> {
         log::info!("Initialize called. objectClass: {}", class_name);
         
+        self.debug = 42069;
+        
         unsafe { log::info!("Display info: {}, {}", (*disp_info).wiz_title, (*disp_info).container_display_name) };
+        self.obj_dest_str = unsafe { (*disp_info).container_display_name.to_string() };
         self.wiz_icon = unsafe { (*disp_info).class_icon };
+        log::debug!("Got class icon: {:?}", self.wiz_icon);
         
         match class_name.to_string().as_str() {
             "user" => {
@@ -121,6 +132,7 @@ impl IDsAdminNewObjExt for MyNewUserWizard {
         let hinstance = get_dll_hinstance();
         log::debug!("got hInstance: {:?}", &hinstance);
 
+        // TODO:
         let mut handle = HANDLE(0);
         
         // Create activation context (common controls)
@@ -147,7 +159,7 @@ impl IDsAdminNewObjExt for MyNewUserWizard {
             dwICC: ICC_STANDARD_CLASSES,
         };
         
-        match unsafe { InitCommonControlsEx(&sex).into() } {
+        match unsafe { InitCommonControlsEx(&sex as *const INITCOMMONCONTROLSEX).into() } {
             true => {
                 log::debug!("InitCommonControlsEx returned true");
             }
@@ -158,12 +170,7 @@ impl IDsAdminNewObjExt for MyNewUserWizard {
         }
         
         // Very unsafe! Getting a reference to self to use in the windowproc
-        /*
-        let this_clone = 
-        let this_ptr = Box::into_raw(Box::new(this_clone)) as *mut _;
-        let this_param = unsafe { std::mem::transmute::<*mut MyNewUserWizard, LPARAM>(this_ptr) };
-        */
-        let this_param = LPARAM(0);
+        let this_lparam = LPARAM(self as *mut _ as isize);
         
         let pages = vec![resource_consts::DIALOG_1, resource_consts::DIALOG_2];
         for page in pages.iter() {
@@ -175,9 +182,8 @@ impl IDsAdminNewObjExt for MyNewUserWizard {
                 Anonymous1: PROPSHEETPAGEW_0 { pszTemplate: make_int_resource(*page) },
                 Anonymous2: PROPSHEETPAGEW_1 { pszIcon: PCWSTR::null() },
                 pszTitle: PCWSTR::null(),
-                //pfnDlgProc: Some(dlgproc),
-                pfnDlgProc: None,
-                lParam: this_param,
+                pfnDlgProc: Some(dlgproc),
+                lParam: this_lparam,
                 pfnCallback: None,
                 pcRefParent: std::ptr::null_mut(),
                 pszHeaderTitle: PCWSTR::null(),
@@ -207,17 +213,19 @@ impl IDsAdminNewObjExt for MyNewUserWizard {
         Ok(())
     }
 
-    fn set_object(&self, ad_obj: &ComItf<dyn IADs>) -> ComResult<()> {
-        /*
-        match *self.new_object.borrow_mut() {
+    fn set_object(&mut self, ad_obj: ComRc<dyn IADs>) -> ComResult<()> {
+        log::info!("Keeping copy of new_object {:?}", ad_obj);
+
+        match self.new_object {
             None => {
-                log::info!("Keeping copy of new_object {:p}", ad_obj);
-                *self.new_object.borrow_mut() = Some(ad_obj.to_owned());
-                Ok(())
+                log::debug!("There is not currently an object in self.new_object");
             },
-            Some(_) => Ok(())
+            Some(_) => {
+                log::warn!("There is an object in self.new_object, overwriting!");
+                self.new_object = Some(ad_obj)
+            }
         }
-        */
+
         Ok(())
         
     }
@@ -329,19 +337,26 @@ unsafe extern "system" fn dlgproc(hwnd_dlg: HWND, message: u32, wparam: WPARAM, 
     match message {
         WM_INITDIALOG => {
             log::debug!("WM_INITDIALOG received by dlgproc");
-            let this = std::mem::transmute::<LPARAM, *mut MyNewUserWizard>(lparam);
+
+            // Getting our reference back from the `lparam`. Seems unsafe again.
+            // let this = lparam.0 as *mut MyNewUserWizard;
+            let this_propsheet = lparam.0 as *const PROPSHEETPAGEW;
+            let this = (*this_propsheet).lParam.0 as *mut MyNewUserWizard;
+            let this = &mut *this;
             
-            let maybe_itf = &this.as_ref().unwrap().wizard;
+            let maybe_itf = &this.wizard;
             if let Some(itf) = maybe_itf {
                 if let Ok((total_pages, first_page)) = itf.get_page_counts() {
                     log::info!("Got total_pages: {}, first_page: {}", &total_pages, &first_page);
-                    log::info!("Set next button to disabled on page {}", 0);
-                    match itf.set_buttons(0, false) {
-                        Ok(_) => {
-                            log::info!("Setting next button to disabled worked");
-                        }
-                        Err(e) => {
-                            log::error!("Setting next button to disabled didn't work: {}", e.to_string())
+                    for i in [0, 1] {
+                        log::info!("Set next button to disabled on page {}", 0);
+                        match itf.set_buttons(i, true.into()) {
+                            Ok(_) => {
+                                log::info!("Setting next button to disabled worked");
+                            }
+                            Err(e) => {
+                                log::error!("Setting next button to disabled didn't work: {}", e.to_string())
+                            }
                         }
                     }
                 } else {
@@ -352,19 +367,107 @@ unsafe extern "system" fn dlgproc(hwnd_dlg: HWND, message: u32, wparam: WPARAM, 
             }
 
             // Store the pointer in a GWL_USERDATA so we can retrieve it later
-            SetWindowLongPtrW(hwnd_dlg, GWL_USERDATA, this as _);
+            SetWindowLongPtrW(hwnd_dlg, GWL_USERDATA, this as *mut MyNewUserWizard as isize);
+
+            // To get the reference back from GWL_USERDATA pointer:
+            // `let this: &mut MyNewUserWizard = &mut *(GetWindowLongPtrW(hwnd_dlg, GWL_USERDATA) as *mut MyNewUserWizard);`
+            
+            // Change the icon of the propsheet
+            change_icon(hwnd_dlg, resource_consts::WIZARD_ICON, this.wiz_icon);
+            
+            // Change the "Create in:" text
+            let mut this_is_dumb: Vec<u16> = this.obj_dest_str.encode_utf16().collect();
+            this_is_dumb.push(0);
+            let this_is_dumb = Box::new(this_is_dumb);
+            set_text(hwnd_dlg, resource_consts::WIZARD_CREATEIN, LPCWSTR(this_is_dumb.as_ptr()));
             true.into()
         }
+        
+        WM_COMMAND => {
+            // | Message Source |                wparam (High word) |      wparam (Low word) |                       lparam |
+            // |----------------|-----------------------------------|------------------------|------------------------------|
+            // |           Menu |                                 0 |        Menu identifier |                            0 |
+            // |    Accelerator |                                 1 | Accelerator identifier |                            0 |
+            // |        Control | Control-defined notification code |     Control identifier | Handle to the control window |
+                
+            let low_word = (wparam.0 as u32 & 0xffff) as u16;
+            let hi_word  = (wparam.0 as u32 >> 16 ) & 0xffff;
+            
+            log::debug!("Got WM_COMMAND: low: {}, hi: {}", low_word, hi_word);
+            
+            match hi_word {
+                BN_CLICKED => {
+                    match low_word {
+                        resource_consts::IN_NEWPASSWORD => {
+                            let mut new_text: Vec<u16> = generate_password().encode_utf16().collect();
+                            new_text.push(0);
+                            let new_text = Box::new(new_text);
+                            set_text(hwnd_dlg, resource_consts::OUT_PASSWORD, LPCWSTR(new_text.as_ptr()));
+                            return true.into();
+                        }
+                        _ => {}
+                    }
+                }
+                _ => {}
+            }
+
+            DefWindowProcW(hwnd_dlg, message, wparam, lparam);
+            true.into()
+        }
+
         WM_DESTROY => {
             log::debug!("WM_DESTROY received by dlgproc");
-            let this = GetWindowLongPtrW(hwnd_dlg, GWL_USERDATA) as *mut MyNewUserWizard;
-            drop(Box::from_raw(this)); // Re-box the pointer to deallocate it.
             true.into()
         }
+        
+
         _ => {
-            log::debug!("{} received by dlgproc", message);
+            log::debug!("{:?} received by dlgproc", wm::WindowMessage::from((message & 0xffff) as u16));
             DefWindowProcW(hwnd_dlg, message, wparam, lparam);
             true.into()
         },
     }
+}
+
+fn change_icon(hwnd: HWND, control: u16, new_icon: HICON) {
+    let icon_control = unsafe { GetDlgItem(hwnd, control.into()) };
+    if !(icon_control.0 == -1 || icon_control.0 == 0) {
+        unsafe { SendMessageW(icon_control, STM_SETICON, std::mem::transmute::<HICON,WPARAM>(new_icon), LPARAM(0)) };
+    }
+}
+
+fn set_text(hwnd: HWND, control: u16, text: LPCWSTR) {
+    let text_control = unsafe { GetDlgItem(hwnd, control.into()) };
+    if !(text_control.0 == -1 || text_control.0 == 0) {
+        unsafe { SendMessageW(text_control, WM_SETTEXT, WPARAM(0), std::mem::transmute::<LPCWSTR,LPARAM>(text)) };
+    }
+}
+
+// TODO: This is so bad please make a better function.
+fn generate_password() -> String {
+    let mut rng = rand::thread_rng();
+    let uppercase_letter = | rng: &mut rand::rngs::ThreadRng | rng.gen_range('A'..='Z') as char;
+    let lowercase_letter = | rng: &mut rand::rngs::ThreadRng | rng.gen_range('a'..='z') as char;
+    let special_char = |rng: &mut rand::rngs::ThreadRng | match rng.gen_range(0..=5) {
+        0 => '!',
+        1 => '@',
+        2 => '#',
+        3 => '$',
+        4 => '%',
+        _ => '&',
+    };
+    let digit = | rng: &mut rand::rngs::ThreadRng | rng.gen_range('0'..='9') as char;
+
+    format!(
+        "{}{}{}{}{}{}{}{}{}",
+        uppercase_letter(&mut rng),
+        lowercase_letter(&mut rng),
+        lowercase_letter(&mut rng),
+        special_char(&mut rng),
+        digit(&mut rng),
+        digit(&mut rng),
+        digit(&mut rng),
+        digit(&mut rng),
+        digit(&mut rng),
+    )
 }

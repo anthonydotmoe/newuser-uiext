@@ -118,7 +118,7 @@ pub trait IDsAdminNewObjExt: IUnknown {
     /// # Returns
     /// 
     /// The method should always return S_OK
-    fn set_object(&self, ad_obj: &ComItf<dyn IADs>) -> ComResult<()>;
+    fn set_object(&mut self, ad_obj: ComRc<dyn IADs>) -> ComResult<()>;
     
     /// Called to enable the object creation wizard extension to write its data
     /// into an object in Active Directory Domain Services.

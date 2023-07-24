@@ -137,6 +137,9 @@
 #define DIALOG_1                        1001
 #define DIALOG_2                        1002
 
+#define WIZARD_ICON                     401
+#define WIZARD_CREATEIN                 402
+
 #define IN_FIRSTNAME                    201
 #define IN_LASTNAME                     202
 #define IN_USERNAME                     203
@@ -147,7 +150,6 @@
 #define IN_NEWPASSWORD                  208
 #define IN_ACCTDISABLED                 209
 
-#define OUT_CREATEIN                    301
 #define OUT_NETBIOSDC                   302
 #define OUT_PASSWORD                    303
 #define OUT_MUSTCHANGEPASS              304
