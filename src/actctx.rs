@@ -10,6 +10,7 @@ use windows::{
     core::PCWSTR
 };
 
+#[derive(Debug)]
 pub struct ReleaseActCtxGuard {
     actctx: HANDLE,
     _actctxopt: OwnedActCtxOpt,
@@ -127,11 +128,18 @@ impl fmt::Display for CreateActCtxError {
 
 impl std::error::Error for CreateActCtxError {}
 
+#[derive(Debug)]
 struct OwnedActCtxOpt {
     actctx_struct: Box<ACTCTXW>,
+    
+    // Allowing unused since we keep the strings so raw pointers work in FFI
+    #[allow(unused)]
     source_wstr: Option<Box<Vec<u16>>>,
+    #[allow(unused)]
     assembly_dir_wstr: Option<Box<Vec<u16>>>,
+    #[allow(unused)]
     resource_name_wstr: Option<Box<Vec<u16>>>,
+    #[allow(unused)]
     app_name_wstr: Option<Box<Vec<u16>>>,
 }
 
@@ -183,6 +191,7 @@ impl TryFrom<CreateActCtxOpt> for OwnedActCtxOpt {
             actctx.lpAssemblyDirectory = PCWSTR(dir.as_ptr());
         }
                 
+        // TODO: Accept string or resource ID
         if let Some(res) = &resource_name_wstr {
             flags |= ActCtxFlags::RESOURCE_NAME_VALID;
             //actctx.lpResourceName = PCWSTR(res.as_ptr());
