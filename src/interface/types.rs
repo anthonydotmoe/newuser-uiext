@@ -18,7 +18,7 @@ use windows::{
         }, Foundation::{
             BOOL, LPARAM
         }, System::Com::{
-            FORMATETC, STGMEDIUM            
+            FORMATETC, STGMEDIUM, STATDATA            
         },
     }, core::PCWSTR};
 
@@ -34,7 +34,7 @@ pub struct ComLPFNSVADDPROPSHEETPAGE(
 #[repr(transparent)]
 pub struct ComLPARAM(pub LPARAM);
 
-#[derive(intercom::ExternType, intercom::ForeignType, intercom::ExternInput)]
+#[derive(intercom::ExternType, intercom::ForeignType, intercom::ExternInput, intercom::ExternOutput)]
 #[allow(non_camel_case_types)]
 #[repr(transparent)]
 pub struct ComFORMATETC(pub FORMATETC);
@@ -48,6 +48,11 @@ pub struct ComHMENU(pub HMENU);
 #[allow(non_camel_case_types)]
 #[repr(transparent)]
 pub struct ComSTGMEDIUM(pub STGMEDIUM);
+
+#[derive(intercom::ExternType, intercom::ForeignType, intercom::ExternInput, intercom::ExternOutput)]
+#[allow(non_camel_case_types)]
+#[repr(transparent)]
+pub struct ComSTATDATA(pub STATDATA);
 
 #[derive(intercom::ExternType, intercom::ForeignType, intercom::ExternInput)]
 #[allow(non_camel_case_types)]
