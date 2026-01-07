@@ -114,10 +114,10 @@ impl fmt::Display for CreateActCtxError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match *self {
             CreateActCtxError::BothSourceAndHModuleDefined => {
-                write!(f, "Both source and hmodule are None. One must be specified")
+                write!(f, "Both source and hmodule are Some. One must be specified")
             }
             CreateActCtxError::NeitherSourceNorHModuleDefined => {
-                write!(f, "Both source and hmodule are Some. Only one may be specified")
+                write!(f, "Both source and hmodule are None. Only one may be specified")
             }
             CreateActCtxError::WindowsError(ref e) => {
                 e.fmt(f)
