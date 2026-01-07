@@ -7,12 +7,13 @@ use std::path::Path;
 
 fn main() {
     let mut res = winres::WindowsResource::new();
-    res.set_resource_file("resource.rc");
+    res.set_resource_file("resources/resource.rc");
     res.compile().unwrap();
     
-    parse_resource_h(Path::new("resource.h"), Path::new("src\\resource_consts.rs"));
+    parse_resource_h(Path::new("resources/resource.h"), Path::new("src\\resource_consts.rs"));
 }
 
+// Copy C style defines to Rust const values
 fn parse_resource_h(h_fname: &Path, rs_fname: &Path) {
     let out_dir = env::var("CARGO_MANIFEST_DIR").unwrap();
     let dest_path = Path::new(&out_dir).join(rs_fname);
@@ -20,7 +21,7 @@ fn parse_resource_h(h_fname: &Path, rs_fname: &Path) {
     
     let input_file = File::open(h_fname).unwrap();
     let reader = BufReader::new(input_file);
-    
+
     let mut parsing = false;
 
     for line in reader.lines() {

@@ -3,6 +3,7 @@
 <assemblyIdentity
     name="anthonydotmoe.NewUserUiExt.MyNewUserWizard"
     version="0.1.0.0"
+    processorArchitecture="amd64"
     type="win32"
 />
 <dependency>
