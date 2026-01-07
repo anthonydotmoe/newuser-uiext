@@ -15,7 +15,6 @@ use interface::{
 
 use rand::Rng;
 
-// mod propsheet;
 mod wm;
 
 mod actctx;
@@ -24,7 +23,7 @@ mod resource_consts;
 
 use intercom::{ prelude::*, BString, Variant, raw::E_INVALIDARG };
 
-use windows::{Win32::{UI::{Controls::{PROPSHEETPAGEW, PROPSHEETPAGEW_0, PROPSHEETPAGEW_1, PROPSHEETPAGEW_2, PSP_DEFAULT, CreatePropertySheetPageW, PSP_HIDEHEADER, InitCommonControlsEx, INITCOMMONCONTROLSEX, ICC_STANDARD_CLASSES}, WindowsAndMessaging::{WM_INITDIALOG, GWL_USERDATA, WM_DESTROY, DefWindowProcW, InsertMenuItemW, MENUITEMINFOW, MIIM_STRING, MENU_ITEM_STATE, MIIM_ID, GetDlgItem, STM_SETICON, SendMessageW, WM_SETTEXT, WM_COMMAND, BN_CLICKED}}, Foundation::{HMODULE, LPARAM, HANDLE, HWND, WPARAM}, Graphics::Gdi::HBITMAP }, core::PCWSTR, w};
+use windows::{core::PCWSTR, w, Win32::{Foundation::{HANDLE, HMODULE, HWND, LPARAM, WPARAM}, Graphics::Gdi::HBITMAP, UI::{Controls::{CreatePropertySheetPageW, InitCommonControlsEx, ICC_STANDARD_CLASSES, INITCOMMONCONTROLSEX, PROPSHEETPAGEW, PROPSHEETPAGEW_0, PROPSHEETPAGEW_1, PROPSHEETPAGEW_2, PSP_DEFAULT, PSP_HIDEHEADER, PSP_USEFUSIONCONTEXT}, WindowsAndMessaging::{DefWindowProcW, GetDlgItem, InsertMenuItemW, SendMessageW, BN_CLICKED, GWL_USERDATA, MENUITEMINFOW, MENU_ITEM_STATE, MIIM_ID, MIIM_STRING, STM_SETICON, WM_COMMAND, WM_DESTROY, WM_INITDIALOG, WM_SETTEXT}} }};
 use windows::Win32::System::LibraryLoader::{GetModuleHandleExW, GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS, GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT};
 use windows::Win32::UI::WindowsAndMessaging::HICON;
 use windows::Win32::UI::WindowsAndMessaging::SetWindowLongPtrW;
@@ -177,7 +176,7 @@ impl IDsAdminNewObjExt for MyNewUserWizard {
                 
             let mut propsheet: PROPSHEETPAGEW = PROPSHEETPAGEW {
                 dwSize: std::mem::size_of::<PROPSHEETPAGEW>() as u32,
-                dwFlags: PSP_DEFAULT | PSP_HIDEHEADER,
+                dwFlags: PSP_DEFAULT | PSP_USEFUSIONCONTEXT | PSP_HIDEHEADER,
                 hInstance: hinstance,
                 Anonymous1: PROPSHEETPAGEW_0 { pszTemplate: make_int_resource(*page) },
                 Anonymous2: PROPSHEETPAGEW_1 { pszIcon: PCWSTR::null() },
@@ -218,11 +217,12 @@ impl IDsAdminNewObjExt for MyNewUserWizard {
 
         match self.new_object {
             None => {
-                log::debug!("There is not currently an object in self.new_object");
+                log::debug!("There is not currently an object in self.new_object. Setting it to received copy");
+                self.new_object = Some(ad_obj);
             },
             Some(_) => {
                 log::warn!("There is an object in self.new_object, overwriting!");
-                self.new_object = Some(ad_obj)
+                self.new_object = Some(ad_obj);
             }
         }
 
@@ -411,20 +411,18 @@ unsafe extern "system" fn dlgproc(hwnd_dlg: HWND, message: u32, wparam: WPARAM, 
                 _ => {}
             }
 
-            DefWindowProcW(hwnd_dlg, message, wparam, lparam);
-            true.into()
+            false.into()
         }
 
         WM_DESTROY => {
             log::debug!("WM_DESTROY received by dlgproc");
-            true.into()
+            false.into()
         }
         
 
         _ => {
             log::debug!("{:?} received by dlgproc", wm::WindowMessage::from((message & 0xffff) as u16));
-            DefWindowProcW(hwnd_dlg, message, wparam, lparam);
-            true.into()
+            false.into()
         },
     }
 }
