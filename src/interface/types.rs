@@ -26,7 +26,7 @@ use windows::{
 #[allow(non_camel_case_types)]
 #[repr(transparent)]
 pub struct ComLPFNSVADDPROPSHEETPAGE(
-    pub unsafe extern "stdcall" fn(param0: HPROPSHEETPAGE, param1: LPARAM) -> BOOL
+    pub unsafe extern "system" fn(param0: HPROPSHEETPAGE, param1: LPARAM) -> BOOL
 );
 
 #[derive(intercom::ExternType, intercom::ForeignType, intercom::ExternInput)]
